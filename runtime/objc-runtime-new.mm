@@ -2588,10 +2588,9 @@ static void validateAlreadyRealizedClass(Class cls) {
     class_rw_t *rw = cls->data();
     size_t rwSize = malloc_size(rw);
 
-    // Note: this check will need some adjustment if class_rw_t's
-    // size changes to not match the malloc bucket.
-    if (rwSize != sizeof(class_rw_t))
-        _objc_fatal("realized class %p has corrupt data pointer %p", cls, rw);
+    // Too-small is corrupt; too-big is a legal malloc bucket (objc4-838+).
+    if (rwSize < sizeof(class_rw_t))
+        _objc_fatal("realized class %p has corrupt data pointer: malloc_size(%p) = %zu", cls, rw, rwSize);
 #endif
 }
 
