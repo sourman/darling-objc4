@@ -526,7 +526,14 @@ LLookupEnd$2:
 	movq	$$ ISA_MASK, %r10
 	andq	(%a2), %r10
 .endif
-LGetIsaDone:	
+LGetIsaDone:
+	// A live object can still have a zero isa (freed, or a tagged class
+	// missing from the table). CacheLookup would read 24(%r10) and fault.
+	// The nil-return label (7:) follows CacheLookup in every caller.
+	testq	%r10, %r10
+	jnz	8f
+	jmp	7f
+8:
 .endmacro
 
 .macro GetIsaSupport
