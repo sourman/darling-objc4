@@ -389,6 +389,13 @@ LExit$0:
 	//   - other registers are set as per calling conventions
 	//
 LLookupStart$2:
+	// Entered with r10 == nil when a restart lands on LLookupStart
+	// after GetIsaFast already decided the isa was missing. The andl
+	// below is the fault Comet hits (rdi == 1, r10 == 0).
+	testq	%r10, %r10
+	jnz	9f
+	jmp	LNullIsa$2
+9:
 
 .if $0 != STRET
 	movq	%a2, %r11		// r11 = _cmd
@@ -398,6 +405,21 @@ LLookupStart$2:
 	andl	24(%r10), %r11d		// r11 = _cmd & class->cache.mask
 	shlq	$$4, %r11		// r11 = offset = (_cmd & mask)<<4
 	addq	16(%r10), %r11		// r11 = class->cache.buckets + offset
+	// Empty caches have a nil bucket pointer and must take the miss
+	// path. A tagged pointer (Comet passes 1 into CFRelease) can
+	// instead name a class whose buckets are a small non-pointer
+	// (0x3f800000); dereferencing that is the fault.
+	movq	16(%r10), %rax
+	shrq	$$32, %rax
+	jnz	8f
+.if $0 != STRET
+	testb	$$1, %a1b
+.else
+	testb	$$1, %a2b
+.endif
+	jz	LCacheMiss$2
+	jmp	LNullIsa$2
+8:
 
 .if $0 != STRET
 	cmpq	cached_sel(%r11), %a2	// if (bucket->sel != _cmd)
@@ -452,6 +474,34 @@ LLookupStart$2:
 	jmp	LCacheMiss$2
 
 LLookupEnd$2:
+
+LNullIsa$2:
+.if $1 == GETIMP
+	xorl	%eax, %eax
+	ret
+.elseif $1 == LOOKUP
+.if $0 == NORMAL
+	leaq	__objc_msgNil(%rip), %r11
+.elseif $0 == FPRET
+	leaq	__objc_msgNil_fpret(%rip), %r11
+.elseif $0 == FP2RET
+	leaq	__objc_msgNil_fp2ret(%rip), %r11
+.else
+	leaq	__objc_msgNil_stret(%rip), %r11
+.endif
+	ret
+.else
+.if $0 == NORMAL
+	ZeroReturn
+.elseif $0 == FPRET
+	ZeroReturnFPRET
+.elseif $0 == FP2RET
+	ZeroReturnFP2RET
+.else
+	ZeroReturnSTRET
+.endif
+	ret
+.endif
 .endmacro
 
 
