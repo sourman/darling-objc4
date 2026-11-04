@@ -578,8 +578,13 @@ LNullIsa$2:
 	testb	$$1, %a1b
 	PN
 	jnz	LGetIsaSlow_f
-	testq	%r11, %r11
-	jz	LNilTestSlow_f
+	// Objects live in the low image or above 1TB. The isa load
+	// faulted on 0x400000f80, which sits in the unmapped gap.
+	cmpq	$$0x200000000, %a1
+	jb	6f
+	cmpq	$$0x10000000000, %a1
+	jb	LNilTestSlow_f
+6:
 	movq	$$ ISA_MASK, %r10
 	andq	(%a1), %r10
 .else
@@ -593,8 +598,11 @@ LNullIsa$2:
 	testb	$$1, %a2b
 	PN
 	jnz	LGetIsaSlow_f
-	testq	%r11, %r11
-	jz	LNilTestSlow_f
+	cmpq	$$0x200000000, %a2
+	jb	6f
+	cmpq	$$0x10000000000, %a2
+	jb	LNilTestSlow_f
+6:
 	movq	$$ ISA_MASK, %r10
 	andq	(%a2), %r10
 .endif
