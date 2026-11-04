@@ -389,6 +389,13 @@ LExit$0:
 	//   - other registers are set as per calling conventions
 	//
 LLookupStart$2:
+	// Entered with r10 == nil when a restart lands on LLookupStart
+	// after GetIsaFast already decided the isa was missing. The andl
+	// below is the fault Comet hits (rdi == 1, r10 == 0).
+	testq	%r10, %r10
+	jnz	9f
+	jmp	LNullIsa$2
+9:
 
 .if $0 != STRET
 	movq	%a2, %r11		// r11 = _cmd
@@ -398,6 +405,21 @@ LLookupStart$2:
 	andl	24(%r10), %r11d		// r11 = _cmd & class->cache.mask
 	shlq	$$4, %r11		// r11 = offset = (_cmd & mask)<<4
 	addq	16(%r10), %r11		// r11 = class->cache.buckets + offset
+	// Empty caches have a nil bucket pointer and must take the miss
+	// path. A tagged pointer (Comet passes 1 into CFRelease) can
+	// instead name a class whose buckets are a small non-pointer
+	// (0x3f800000); dereferencing that is the fault.
+	movq	16(%r10), %rax
+	shrq	$$32, %rax
+	jnz	8f
+.if $0 != STRET
+	testb	$$1, %a1b
+.else
+	testb	$$1, %a2b
+.endif
+	jz	LCacheMiss$2
+	jmp	LNullIsa$2
+8:
 
 .if $0 != STRET
 	cmpq	cached_sel(%r11), %a2	// if (bucket->sel != _cmd)
@@ -452,6 +474,34 @@ LLookupStart$2:
 	jmp	LCacheMiss$2
 
 LLookupEnd$2:
+
+LNullIsa$2:
+.if $1 == GETIMP
+	xorl	%eax, %eax
+	ret
+.elseif $1 == LOOKUP
+.if $0 == NORMAL
+	leaq	__objc_msgNil(%rip), %r11
+.elseif $0 == FPRET
+	leaq	__objc_msgNil_fpret(%rip), %r11
+.elseif $0 == FP2RET
+	leaq	__objc_msgNil_fp2ret(%rip), %r11
+.else
+	leaq	__objc_msgNil_stret(%rip), %r11
+.endif
+	ret
+.else
+.if $0 == NORMAL
+	ZeroReturn
+.elseif $0 == FPRET
+	ZeroReturnFPRET
+.elseif $0 == FP2RET
+	ZeroReturnFP2RET
+.else
+	ZeroReturnSTRET
+.endif
+	ret
+.endif
 .endmacro
 
 
@@ -513,20 +563,61 @@ LLookupEnd$2:
 /////////////////////////////////////////////////////////////////////
 
 .macro GetIsaFast
+	// NilTest only catches a null receiver. Comet also messages
+	// 0x2121212121212121, pointers below the 1TB object heap
+	// (the isa load faulted on 0x400000f80), and 0xbadbad........
+	// which has the tagged bit set. Those are not objects.
 .if $0 != STRET
+	movabsq	$$0x2121212121212121, %r11
+	cmpq	%r11, %a1
+	je	LNilTestSlow_f
+	movq	%a1, %r11
+	shrq	$$40, %r11
+	cmpl	$$0xbadbad, %r11d
+	je	LNilTestSlow_f
 	testb	$$1, %a1b
 	PN
 	jnz	LGetIsaSlow_f
+	// Objects live in the low image or above 1TB. The isa load
+	// faulted on 0x400000f80, which sits in the unmapped gap.
+	movabsq	$$0x200000000, %r11
+	cmpq	%r11, %a1
+	jb	6f
+	movabsq	$$0x10000000000, %r11
+	cmpq	%r11, %a1
+	jb	LNilTestSlow_f
+6:
 	movq	$$ ISA_MASK, %r10
 	andq	(%a1), %r10
 .else
+	movabsq	$$0x2121212121212121, %r11
+	cmpq	%r11, %a2
+	je	LNilTestSlow_f
+	movq	%a2, %r11
+	shrq	$$40, %r11
+	cmpl	$$0xbadbad, %r11d
+	je	LNilTestSlow_f
 	testb	$$1, %a2b
 	PN
 	jnz	LGetIsaSlow_f
+	movabsq	$$0x200000000, %r11
+	cmpq	%r11, %a2
+	jb	6f
+	movabsq	$$0x10000000000, %r11
+	cmpq	%r11, %a2
+	jb	LNilTestSlow_f
+6:
 	movq	$$ ISA_MASK, %r10
 	andq	(%a2), %r10
 .endif
-LGetIsaDone:	
+LGetIsaDone:
+	// A live object can still have a zero isa (freed, or a tagged class
+	// missing from the table). CacheLookup would read 24(%r10) and fault.
+	// The nil-return label (7:) follows CacheLookup in every caller.
+	testq	%r10, %r10
+	jnz	8f
+	jmp	7f
+8:
 .endmacro
 
 .macro GetIsaSupport

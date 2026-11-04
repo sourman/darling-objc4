@@ -2588,9 +2588,11 @@ static void validateAlreadyRealizedClass(Class cls) {
     class_rw_t *rw = cls->data();
     size_t rwSize = malloc_size(rw);
 
-    // Note: this check will need some adjustment if class_rw_t's
-    // size changes to not match the malloc bucket.
-    if (rwSize != sizeof(class_rw_t))
+    // Apple's libmalloc reports this 32-byte block as exactly sizeof(class_rw_t).
+    // An interposed zone (Chromium's) reports the larger slot size, or 0 when
+    // the block is not in a zone libmalloc tracks. A reported size that is
+    // nonzero and smaller than the struct is still a corrupt data pointer.
+    if (rwSize != 0 && rwSize < sizeof(class_rw_t))
         _objc_fatal("realized class %p has corrupt data pointer %p", cls, rw);
 #endif
 }
