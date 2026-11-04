@@ -563,24 +563,38 @@ LNullIsa$2:
 /////////////////////////////////////////////////////////////////////
 
 .macro GetIsaFast
-	// Freed objects are filled with 0x21. That pointer is not nil, so
-	// NilTest does not return, and the isa load below faults.
+	// NilTest only catches a null receiver. Comet also messages
+	// 0x2121212121212121, pointers below the 1TB object heap
+	// (the isa load faulted on 0x400000f80), and 0xbadbad........
+	// which has the tagged bit set. Those are not objects.
 .if $0 != STRET
 	movabsq	$$0x2121212121212121, %r11
 	cmpq	%r11, %a1
 	je	LNilTestSlow_f
+	movq	%a1, %r11
+	shrq	$$40, %r11
+	cmpl	$$0xbadbad, %r11d
+	je	LNilTestSlow_f
 	testb	$$1, %a1b
 	PN
 	jnz	LGetIsaSlow_f
+	testq	%r11, %r11
+	jz	LNilTestSlow_f
 	movq	$$ ISA_MASK, %r10
 	andq	(%a1), %r10
 .else
 	movabsq	$$0x2121212121212121, %r11
 	cmpq	%r11, %a2
 	je	LNilTestSlow_f
+	movq	%a2, %r11
+	shrq	$$40, %r11
+	cmpl	$$0xbadbad, %r11d
+	je	LNilTestSlow_f
 	testb	$$1, %a2b
 	PN
 	jnz	LGetIsaSlow_f
+	testq	%r11, %r11
+	jz	LNilTestSlow_f
 	movq	$$ ISA_MASK, %r10
 	andq	(%a2), %r10
 .endif
