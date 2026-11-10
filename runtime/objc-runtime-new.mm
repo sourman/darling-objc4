@@ -39,6 +39,39 @@
 
 #define newprotocol(p) ((protocol_t *)p)
 
+// CrGpuMain objc_msgSend(-release) with isa 0x20000000000. That is not a
+// class: cache.mask is read at 0x20000000018. Log the caller and return nil.
+extern "C" void
+objc_log_bad_isa(void *obj, const char *sel, uintptr_t isa, void *ra, uintptr_t *sp)
+{
+    static int reports;
+    const char *name = "?";
+    int i;
+
+    if (reports >= 4)
+        return;
+    reports++;
+    if (sel) {
+        const unsigned char *s = (const unsigned char *)sel;
+        int ok = 1;
+        for (i = 0; i < 48 && s[i]; i++) {
+            if (s[i] < 0x20 || s[i] > 0x7e) {
+                ok = 0;
+                break;
+            }
+        }
+        if (ok && i > 0 && i < 48)
+            name = sel;
+    }
+    fprintf(stderr, "objc bad isa obj=%p sel=%s isa=%p ra=%p\n", obj, name, (void *)isa, ra);
+    if (sp) {
+        fprintf(stderr, "objc bad isa stack %p %p %p %p %p %p\n",
+                (void *)sp[0], (void *)sp[1], (void *)sp[2],
+                (void *)sp[3], (void *)sp[4], (void *)sp[5]);
+    }
+    fflush(stderr);
+}
+
 static void disableTaggedPointers();
 static void detach_class(Class cls, bool isMeta);
 static void free_class(Class cls);
