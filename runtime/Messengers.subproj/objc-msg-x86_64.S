@@ -589,12 +589,14 @@ LNullIsa$2:
 6:
 	movq	$$ ISA_MASK, %r10
 	andq	(%a1), %r10
-	// CrGpuMain: isa is exactly 0x20000000000 and cache.mask faults.
+	// CrGpuMain: isa is exactly 0x20000000000 or 0x10000000000
+	// and cache.mask faults.
 	movabsq	$$0x20000000000, %r11
 	cmpq	%r11, %r10
-	jne	5f
-	jmp	_objc_msgSend_bad_isa
-5:
+	je	_objc_msgSend_bad_isa
+	movabsq	$$0x10000000000, %r11
+	cmpq	%r11, %r10
+	je	_objc_msgSend_bad_isa
 .else
 	movabsq	$$0x2121212121212121, %r11
 	cmpq	%r11, %a2
