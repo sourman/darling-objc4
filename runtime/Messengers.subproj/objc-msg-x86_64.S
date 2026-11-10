@@ -589,6 +589,14 @@ LNullIsa$2:
 6:
 	movq	$$ ISA_MASK, %r10
 	andq	(%a1), %r10
+	// CrGpuMain: isa is exactly 0x20000000000 or 0x10000000000
+	// and cache.mask faults.
+	movabsq	$$0x20000000000, %r11
+	cmpq	%r11, %r10
+	je	_objc_msgSend_bad_isa
+	movabsq	$$0x10000000000, %r11
+	cmpq	%r11, %r10
+	je	_objc_msgSend_bad_isa
 .else
 	movabsq	$$0x2121212121212121, %r11
 	cmpq	%r11, %a2
@@ -814,6 +822,33 @@ _objc_debug_taggedpointer_classes:
 	.globl _objc_debug_taggedpointer_ext_classes
 _objc_debug_taggedpointer_ext_classes:
 	.fill 256, 8, 0
+
+	STATIC_ENTRY _objc_msgSend_bad_isa
+	pushq	%rax
+	pushq	%rcx
+	pushq	%rdx
+	pushq	%rdi
+	pushq	%rsi
+	pushq	%r8
+	pushq	%r9
+	pushq	%r10
+	pushq	%r11
+	movq	%r10, %rdx
+	movq	72(%rsp), %rcx
+	leaq	80(%rsp), %r8
+	call	_objc_log_bad_isa
+	popq	%r11
+	popq	%r10
+	popq	%r9
+	popq	%r8
+	popq	%rsi
+	popq	%rdi
+	popq	%rdx
+	popq	%rcx
+	popq	%rax
+	ZeroReturn
+	ret
+	END_ENTRY _objc_msgSend_bad_isa
 
 	ENTRY _objc_msgSend
 	UNWIND _objc_msgSend, NoFrame
